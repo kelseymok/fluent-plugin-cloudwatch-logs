@@ -17,6 +17,7 @@ module Fluent::Plugin
     config_param :aws_use_sts, :bool, default: false
     config_param :aws_sts_role_arn, :string, default: nil
     config_param :aws_sts_session_name, :string, default: 'fluentd'
+    config_param :aws_use_instance_profile, :bool, default: nil
     config_param :region, :string, :default => nil
     config_param :endpoint, :string, :default => nil
     config_param :log_group_name, :string, :default => nil
@@ -94,6 +95,8 @@ module Fluent::Plugin
           role_arn: @aws_sts_role_arn,
           role_session_name: @aws_sts_session_name
         )
+      elsif @aws_use_instance_profile
+        options[:credentials] = Aws::InstanceProfileCredentials.new()
       else
         options[:credentials] = Aws::Credentials.new(@aws_key_id, @aws_sec_key) if @aws_key_id && @aws_sec_key
       end

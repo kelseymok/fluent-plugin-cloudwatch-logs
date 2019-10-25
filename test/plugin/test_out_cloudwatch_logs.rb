@@ -42,6 +42,78 @@ class CloudwatchLogsOutputTest < Test::Unit::TestCase
     end
   end
 
+  sub_test_case "configure sts" do
+    def test_configure
+      d = create_driver(<<-EOC)
+        @type cloudwatch_logs
+        aws_sts_role_arn some_awesome_role_arn
+        aws_use_sts true
+        region us-east-1
+        log_group_name test_group
+        log_stream_name test_stream
+      EOC
+
+      assert_equal('some_awesome_role_arn', d.instance.aws_sts_role_arn)
+      assert_equal(true, d.instance.aws_use_sts)
+      assert_equal('us-east-1', d.instance.region)
+      assert_equal('test_group', d.instance.log_group_name)
+      assert_equal('test_stream', d.instance.log_stream_name)
+    end
+  end
+
+  sub_test_case "configure authentication instance profile" do
+    def test_configure
+      d = create_driver(<<-EOC)
+        @type cloudwatch_logs
+        aws_use_instance_profile true
+        region us-east-1
+        log_group_name test_group
+        log_stream_name test_stream
+      EOC
+
+      assert_equal(true, d.instance.aws_use_instance_profile)
+      assert_equal('us-east-1', d.instance.region)
+      assert_equal('test_group', d.instance.log_group_name)
+      assert_equal('test_stream', d.instance.log_stream_name)
+
+      assert_equal([], d.logs)
+    end
+  end
+
+  sub_test_case "real world" do
+    def test_connect_via_instance_profile
+      new_log_stream
+
+      d = create_driver(<<-EOC)
+        @type cloudwatch_logs
+        aws_use_instance_profile true
+        region us-east-1
+        log_group_name test_group
+        log_stream_name test_stream
+      EOC
+      time = event_time
+      d.run(default_tag: fluentd_tag, flush: true) do
+        d.feed(time, {'cloudwatch' => 'logs1'})
+        # Addition converts EventTime to seconds
+        d.feed(time + 1, {'cloudwatch' => 'logs2'})
+      end
+
+      sleep 10
+
+      logs = d.logs
+      events = get_log_events
+      assert_equal(2, events.size)
+      assert_equal((time.to_f * 1000).floor, events[0].timestamp)
+      assert_equal('{"cloudwatch":"logs1"}', events[0].message)
+      assert_equal((time.to_i + 1) * 1000, events[1].timestamp)
+      assert_equal('{"cloudwatch":"logs2"}', events[1].message)
+
+      assert(logs.any?{|log| log.include?("Called PutLogEvents API") })
+      clear_log_group
+
+    end
+  end
+
   sub_test_case "real world" do
     def setup
       omit if ENV["CI"] == "true"
